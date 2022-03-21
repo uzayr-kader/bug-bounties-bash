@@ -1,7 +1,10 @@
 # Bug Bounties with Bash, @TomNomNom
 Talk: https://www.youtube.com/watch?v=s9w0KutMorE
+
 Slides: https://tomnomnom.com/talks/bug-bounties-with-bash-virsec.pdf
+
 Files in order of use/creation in talk:
+
 0. subdomains.txt
 1. brute.sh
 2. cnames.sh
@@ -53,9 +56,9 @@ Linux has 3 standard streams:
 
 ## Enumerating Subdomains
 ### External services
-  - hackertarget.com
-  - crt.sh
-  - certspotter.com
+  - [hackertarget.com](https://hackertarget.com/)
+  - [crt.sh](https://crt.sh/)
+  - [certspotter.com](https://sslmate.com/certspotter/)
 ### Brute force
 You will need:
   - A target
@@ -74,6 +77,7 @@ Exit codes can be used to smartly catch this information
 | 1 | Operation not permitted |
 | 2 | No such file or directory |
 | 3 | No such process |
+| ... | ... |
 
 #### Conditionals
 ```
@@ -83,16 +87,20 @@ then
 fi
 ```
 For the example of resolving hosts:
-`if host example.com; then echo "IT RESOLVES \o/"; fi
-`if host non-existent.com; then echo "IT RESOLVES \o/"; fi
+
+`if host example.com; then echo "IT RESOLVES \o/"; fi` and
+`if host non-existent.com; then echo "IT RESOLVES \o/"; fi`
+
 But these still output their full response before echoing
 
 **Tidying up:**
 `&> /dev/null` redirects `stdout` and `stderr` to `/dev/null` which can be considered a black hole that you can throw data into.
 
 So the commands become:
-`if host example.com &> /dev/null; then echo "IT RESOLVES \o/"; fi
-`if host non-existent.com &> /dev/null; then echo "IT RESOLVES \o/"; fi
+
+`if host example.com &> /dev/null; then echo "IT RESOLVES \o/"; fi` and 
+`if host non-existent.com &> /dev/null; then echo "IT RESOLVES \o/"; fi`
+
 And the output is only what we want to see
 
 #### Loops
@@ -101,34 +109,42 @@ while this-command-works do;
   this-command
 done
 ```
+
 ##### Looping over `stdin`
 `while read sub; do echo "$sub.sbtuk.net"; done < subdomains.txt`
+
 Which attaches the contents of `subdomains.txt` to the `stdin`
 
 #### Putting It Together
 `while read sub; do if host "$sub.example.com" &> /dev/null; then echo $sub.example.com"; fi; done < subdomains.txt`
+
 Which is looking really messy
 
 ## Shell scripts
+
 Create a `brute.sh` file and use `chmod u+x ./brute.sh`
+
 ```
-#!/usr/bin/bash  # Hit !! in command mode in Vim, then which bash and Enter to auto input this location /usr/bin/bash
+#!/usr/bin/bash  # Tip: Hit !! in command mode in Vim, then run 'which bash' and Enter to auto input this location /usr/bin/bash
 
 while read sub; do
   if host "$sub.example.com" &> /dev/null; then
-  	echo $sub.example.com";
+    echo $sub.example.com";
   fi
 done < subdomains.txt
 ```
+
 ### Make it generic
+
 This way you can provide the domain on the terminal:
+
 ```
-#!/usr/bin/bash  # Hit !! in command mode in Vim, then which bash and Enter to auto input this location /usr/bin/bash
+#!/usr/bin/bash
 
 domain=$1
 while read sub; do
   if host "$sub.$domain" &> /dev/null; then
-  	echo $sub.$domain";
+    echo $sub.$domain";
   fi
 done < subdomains.txt
 ```
@@ -136,38 +152,51 @@ done < subdomains.txt
 e.g. `$ ./brute.sh example.com`
 
 To make it even more versatile, remove subdomains.txt
+
 ```
 #!/usr/bin/bash
 
 domain=$1
 while read sub; do
   if host "$sub.$domain" &> /dev/null; then
-  	echo $sub.$domain";
+    echo $sub.$domain";
   fi
 done
 ```
+
 Now `$ ./brute.sh example.com` will hang (using the keyboard input is now the `stdin` as the keyboard is the default
+
 Or more usefully can run:
 * `./brute.sh example.com < subdomains.txt`
 * `cat subdomains.txt | ./brute.sh example.com`
 
 ## Dangling CNAMEs
+
 The Plan:
 * Check subdomains for CNAME records
 * Check if those CNAMEs resolve
 * If they don't, it's possible to buy those and technically have control over the original name
+
 `host example.com` not found
-`host -t CNAME example.com` shows that it's an alias for something else `lol-whoop.com`
-`host lol-whoops.com` not found - this is a problem
+
+`host -t CNAME example.com` shows that it's an alias for something else e.g. `lol-whoops.com`
+
+If running `host lol-whoops.com` shows that the domain is not found - this is a problem for the original domain owners
 
 ### Getting the CNAMEs
+
 `host -t CNAME invalid.sbtuk.net` returns a domain:
+
 `invalid.sbtuk.net is an alias for lolifyouregisteredthisyouwastedyourmoney.com.`
+
 To capture that domain:
+
 `host -t CNAME invalid.sbtuk.net | grep 'an alias' | awk '{print $NF}'`
+
 `$NF` stands for number of fields (separated by spaces), so in this case same as $6 and it's the last field of the output line.
 
 Now working with `cnames.sh` starting in the same place as `brute.sh`
+
 ```
 #!/usr/bin/bash
 
@@ -180,16 +209,20 @@ while read sub; do
   fi
   
   if ! host $cname &> /dev/null; then
-  	echo "$cname did not resolve ($sub.$domain)";
+    echo "$cname did not resolve ($sub.$domain)";
   fi
 done
 ```
 
 ## Fetching Targets
-* Having lots of targets to look at can be overwhelming
+Having lots of targets to look at can be overwhelming
+
 `curl https://example.com -o example.txt` can be used to grab the HTML of a webpage
+
 `cat subdomains.txt | ./brute.sh target.com | awk '{print "https://" $1}'` > urls.txt
+
 Open up a new file `fetch.sh`
+
 ```
 #!/usr/bin/bash
 
@@ -204,10 +237,13 @@ while read url; do
   curl -sk "$url" -o $filename &> /dev/null  # so that we write the output to different files each time
 done
 ```
+
 `curl -sk` runs the silent flag and flag to ignore certificate errors
 
 ### Using Grep
+
 Now that we have the HTML fetched, we need to sift through it.
+
 Some things to grep for:
 * Titles
 * Server headers
@@ -245,7 +281,9 @@ xargs -P1 -n1 -I{} bash -c "
   fi
 "
 ```
+
 Create a new shell script `sub.sh`
+
 ```
 #!/bin/bash
 
@@ -254,11 +292,15 @@ if host $domain &> /dev/null; then
   echo $domain
 fi
 ```
+
 Now we can run:
+
 `cat	subdomains.txt | awk '{print $1 ".sbtuk.net"}' | xargs -n1 -P10 ./subs.sh`
+
 which takes the various subdomain.domain lines as input and uses `xargs` to run 10 processes in parallel (1 line each)
 
 Now creating: `parsub.sh`
+
 ```
 #!/usr/bin/bash
 
@@ -267,7 +309,9 @@ while read sub; do
   echo $sub.$domain
 done | xargs -n1 -P10 ./sub.sh
 ```
+
 Allowing us to run:
+
 `cat subdomains.txt | ./parsub.sh yahoo.com`
 
 ## Bits And Bobs
